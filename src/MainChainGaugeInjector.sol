@@ -7,10 +7,10 @@ import "@chainlink/contracts/src/v0.8/interfaces/KeeperCompatibleInterface.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./interfaces/IMainChainGauge.sol";
+import "interfaces/balancer/IChildChainGauge.sol";
 
 /**
- * @title The MainChainGaugeInjector Contract
+ * @title The ChildChainGaugeInjector Contract
  * @author 0xtritium.eth + master coder Mike B
  * @notice This contract is a chainlink automation compatible interface to automate regular payment of non-BAL tokens to a child chain gauge.
  * @notice This contract is meant to run/manage a single token.  This is almost always the case for a DAO trying to use such a thing.
@@ -18,10 +18,9 @@ import "./interfaces/IMainChainGauge.sol";
  * @notice This contract will only function if it is configured as the distributor for a token/gauge it is operating on.
  * @notice The contract is meant to hold token balances, and works on a schedule set using setRecipientList.  The schedule defines an amount per round and number of rounds per gauge.
  * @notice This contract is Ownable and has lots of sweep functionality to allow the owner to work with the contract or get tokens out should there be a problem.
- * @dev This release only works on mainnet, due to differences in the interface of mainchain/childchain gauges!!!
  * see https://docs.chain.link/chainlink-automation/utility-contracts/
  */
-contract MainChainGaugeInjector is
+contract ChildChainGaugeInjector is
   ConfirmedOwner,
   Pausable,
   KeeperCompatibleInterface
@@ -176,7 +175,7 @@ contract MainChainGaugeInjector is
     Target memory target;
     for (uint256 idx = 0; idx < gaugeList.length; idx++) {
       target = s_targets[gaugeList[idx]];
-      IMainChainGauge gauge = IMainChainGauge(gaugeList[idx]);
+      IChildChainGauge gauge = IChildChainGauge(gaugeList[idx]);
 
       uint256 period_finish = gauge.reward_data(tokenAddress).period_finish;
 
@@ -208,6 +207,7 @@ contract MainChainGaugeInjector is
    * @param ready the list of gauges to fund (addresses must be pre-approved)
    */
   function _injectFunds(address[] memory ready) internal whenNotPaused {
+    uint256 minWaitPeriodSeconds = s_minWaitPeriodSeconds;
     address tokenAddress = s_injectTokenAddress;
     IERC20 token = IERC20(tokenAddress);
     uint256 balance = token.balanceOf(address(this));
@@ -215,7 +215,7 @@ contract MainChainGaugeInjector is
 
     for (uint256 idx = 0; idx < ready.length; idx++) {
       target = s_targets[ready[idx]];
-      IMainChainGauge gauge = IMainChainGauge(ready[idx]);
+      IChildChainGauge gauge = IChildChainGauge(ready[idx]);
       uint256 period_finish = gauge.reward_data(tokenAddress).period_finish;
 
       if (
@@ -326,7 +326,7 @@ contract MainChainGaugeInjector is
     address gauge,
     address reward_token
   ) external onlyOwner {
-    IMainChainGauge(gauge).set_reward_distributor(reward_token, msg.sender);
+    IChildChainGauge(gauge).set_reward_distributor(reward_token, msg.sender);
   }
 
   /**
@@ -340,7 +340,7 @@ contract MainChainGaugeInjector is
     address reward_token,
     uint256 amount
   ) external onlyOwner {
-    IMainChainGauge gaugeContract = IMainChainGauge(gauge);
+    IChildChainGauge gaugeContract = IChildChainGauge(gauge);
     IERC20 token = IERC20(reward_token);
     SafeERC20.safeApprove(token, gauge, amount);
     gaugeContract.deposit_reward_token(reward_token, amount);
@@ -403,7 +403,6 @@ contract MainChainGaugeInjector is
   /**
    * @notice Gets the token this injector is operating on
    */
-
   function getInjectTokenAddress() external view returns (address) {
     return s_injectTokenAddress;
   }
@@ -411,7 +410,6 @@ contract MainChainGaugeInjector is
    * @notice Gets configuration information for an address on the gaugelist
    * @param targetAddress return Target struct for a given gauge according to the current scheduled distributions
    */
-
   function getAccountInfo(
     address targetAddress
   )
